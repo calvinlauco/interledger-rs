@@ -1,7 +1,6 @@
 use clap::ArgMatches;
 use http;
 use reqwest::{self, Client, Response};
-use serde_json::value::*;
 use std::{borrow::Cow, collections::HashMap};
 use tungstenite::{connect, handshake::client::Request};
 use url::Url;
