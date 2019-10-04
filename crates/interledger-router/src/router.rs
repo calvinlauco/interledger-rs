@@ -3,8 +3,11 @@ use bytes::Bytes;
 use futures::{future::err, Future};
 use interledger_packet::{ErrorCode, RejectBuilder};
 use interledger_service::*;
-use log::{error, trace};
 use std::str;
+#[cfg(feature = "trace")]
+use tracing::{error, span, trace, Level};
+#[cfg(feature = "trace")]
+use tracing_futures::Instrument;
 
 /// # Interledger Router
 ///
@@ -107,7 +110,26 @@ where
                     })
                     .and_then(move |mut accounts| {
                         let request = request.into_outgoing(accounts.remove(0));
-                        next.send_request(request)
+                        #[cfg(feature = "trace")]
+                        let span = span!(
+                            Level::DEBUG,
+                            "outgoing",
+                            to.username = %request.to.username(),
+                            // TODO should these be included?
+                            // to.id = request.to.id(),
+                            // to.ilp_address = request.to.ilp_address(),
+                            to.asset_code = request.to.asset_code(),
+                            to.asset_scale = %request.to.asset_scale()
+                        );
+                        let fut = next.send_request(request);
+                        #[cfg(feature = "trace")]
+                        {
+                            fut.instrument(span)
+                        }
+                        #[cfg(not(feature = "trace"))]
+                        {
+                            fut
+                        }
                     }),
             )
         } else {
