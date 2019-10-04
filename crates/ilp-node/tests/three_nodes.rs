@@ -4,6 +4,8 @@ use interledger::{packet::Address, service::Username};
 use serde_json::json;
 use std::str::FromStr;
 use tokio::runtime::Builder as RuntimeBuilder;
+use tracing;
+use tracing_subscriber;
 
 mod redis_helpers;
 use redis_helpers::*;
@@ -13,8 +15,13 @@ use test_helpers::*;
 
 #[test]
 fn three_nodes() {
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::FmtSubscriber::builder()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .finish(),
+    )
+    .unwrap_or(());
     // Nodes 1 and 2 are peers, Node 2 is the parent of Node 3
-    let _ = env_logger::try_init();
     let context = TestContext::new();
 
     // Each node will use its own DB within the redis instance

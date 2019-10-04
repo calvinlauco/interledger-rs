@@ -6,13 +6,13 @@ use futures::{
 };
 use interledger_packet::{Address, ErrorCode, Fulfill, Packet, Reject, RejectBuilder};
 use interledger_service::*;
-use log::{error, trace};
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     r#async::{Chunk, Client, ClientBuilder, Response as HttpResponse},
 };
 use std::str::FromStr;
 use std::{convert::TryFrom, marker::PhantomData, sync::Arc, time::Duration};
+use tracing::{error, trace};
 
 #[derive(Clone)]
 pub struct HttpClientService<S, O, A> {

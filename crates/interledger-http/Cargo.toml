@@ -12,7 +12,9 @@ bytes = "0.4.12"
 futures = "0.1.25"
 interledger-packet = { path = "../interledger-packet", version = "^0.2.2-alpha.1"}
 interledger-service = { path = "../interledger-service", version = "^0.2.2-alpha.1"}
-log = "0.4.6"
 reqwest = "0.9.11"
 url = "2.1.0"
+tracing = { version = "0.1", features = ["log"] }
+tracing-futures = "0.0.1-alpha.1"
+uuid = "0.7.4"
 warp = "0.1.20"

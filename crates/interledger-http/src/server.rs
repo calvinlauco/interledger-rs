@@ -1,18 +1,22 @@
-use super::HttpStore;
+use super::{HttpAccount, HttpStore};
 use bytes::{buf::Buf, Bytes, BytesMut};
 use futures::{
     future::{err, Either},
     Future,
 };
 use interledger_packet::Prepare;
-use interledger_service::{AuthToken, IncomingRequest, IncomingService};
-use log::error;
+use interledger_service::{AddressStore, AuthToken, IncomingRequest, IncomingService};
 use std::{
     convert::TryFrom,
     error::Error as StdError,
     fmt::{self, Display},
+    marker::PhantomData,
     net::SocketAddr,
+    str,
 };
+use tracing::{debug, error, span, Level};
+use tracing_futures::Instrument;
+use uuid::Uuid;
 use warp::{self, Filter};
 
 /// Max message size that is allowed to transfer from a request or a message.
@@ -21,9 +25,10 @@ pub const MAX_PACKET_SIZE: u64 = 40000;
 /// A warp filter that parses incoming ILP-Over-HTTP requests, validates the authorization,
 /// and passes the request to an IncomingService handler.
 #[derive(Clone)]
-pub struct HttpServer<I, S> {
+pub struct HttpServer<I, S, A> {
     incoming: I,
     store: S,
+    phantom_data: PhantomData<A>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -43,13 +48,18 @@ impl Display for ApiError {
 
 impl StdError for ApiError {}
 
-impl<I, S> HttpServer<I, S>
+impl<I, S, A> HttpServer<I, S, A>
 where
-    I: IncomingService<S::Account> + Clone + Send + Sync + 'static,
-    S: HttpStore,
+    I: IncomingService<A> + Clone + Send + Sync + 'static,
+    S: HttpStore<Account = A> + AddressStore,
+    A: HttpAccount + 'static,
 {
     pub fn new(incoming: I, store: S) -> Self {
-        HttpServer { incoming, store }
+        HttpServer {
+            incoming,
+            store,
+            phantom_data: PhantomData,
+        }
     }
 
     pub fn as_filter(
@@ -58,6 +68,7 @@ where
     {
         let incoming = self.incoming.clone();
         let store = self.store.clone();
+        let ilp_address = self.store.get_ilp_address();
 
         warp::post2()
             .and(warp::header::<AuthToken>("authorization"))
@@ -78,6 +89,17 @@ where
                 // TODO don't copy ILP packet
                 let buffer = BytesMut::from(body.bytes());
                 if let Ok(prepare) = Prepare::try_from(buffer) {
+                    let span = span!(Level::DEBUG,
+                        "request",
+                        request.id = %Uuid::new_v4(),
+                        prepare.destination = %prepare.destination(),
+                        prepare.amount = prepare.amount(),
+                        from.username = %account.username(),
+                        from.id = %account.id(),
+                        from.ilp_address = %account.ilp_address(),
+                        from.asset_code = account.asset_code(),
+                        from.asset_scale = %account.asset_scale(),
+                    );
                     Either::A(
                         incoming
                             .clone()
@@ -85,17 +107,30 @@ where
                                 from: account,
                                 prepare,
                             })
-                            .then(|result| {
+                            .then(move |result| {
                                 let bytes: BytesMut = match result {
-                                    Ok(fulfill) => fulfill.into(),
-                                    Err(reject) => reject.into(),
+                                    Ok(fulfill) => {
+                                        debug!(result = "fulfill");
+                                        fulfill.into()
+                                    }
+                                    Err(reject) => {
+                                        debug!(result = "reject",
+                                            reject.code = %reject.code(),
+                                            reject.message = str::from_utf8(reject.message()).unwrap_or_default(),
+                                            reject.triggered_by = if let Some(ref address) = reject.triggered_by() {
+                                                &address
+                                            } else {
+                                                ""
+                                            });
+                                        reject.into()
+                                    }
                                 };
                                 Ok(warp::http::Response::builder()
                                     .header("Content-Type", "application/octet-stream")
                                     .status(200)
                                     .body(bytes.freeze())
                                     .unwrap())
-                            }),
+                            }).instrument(span),
                     )
                 } else {
                     error!("Body was not a valid Prepare packet");
