@@ -13,11 +13,24 @@ use redis_helpers::*;
 mod test_helpers;
 use test_helpers::*;
 
+use chrono::Utc;
+use std::fmt;
+struct Rfc3339Time {}
+
+impl tracing_subscriber::fmt::time::FormatTime for Rfc3339Time {
+    fn format_time(&self, w: &mut dyn fmt::Write) -> fmt::Result {
+        write!(w, "{} ", Utc::now().to_rfc3339())
+    }
+}
+
 #[test]
 fn three_nodes() {
+    // TODO put this in some shared library so we don't need to write this everywhere
     tracing::subscriber::set_global_default(
         tracing_subscriber::FmtSubscriber::builder()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_ansi(true)
+            .with_timer(Rfc3339Time {})
             .finish(),
     )
     .unwrap_or(());

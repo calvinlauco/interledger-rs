@@ -10,6 +10,7 @@ default-run = "ilp-node"
 
 [dependencies]
 bytes = "0.4.12"
+chrono = "0.4.9"
 clap = "2.32.0"
 config = "0.9.3"
 env_logger = "0.6.1"

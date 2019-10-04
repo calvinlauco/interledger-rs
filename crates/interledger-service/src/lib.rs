@@ -237,7 +237,7 @@ use uuid::Uuid;
 pub fn debug_incoming_request(request: &IncomingRequest<impl Account>) -> Span {
     span!(Level::DEBUG,
         "request",
-        request.id = %Uuid::new_v4(),
+        id = %Uuid::new_v4(),
         prepare.destination = %request.prepare.destination(),
         prepare.amount = request.prepare.amount(),
         from.username = %request.from.username(),
