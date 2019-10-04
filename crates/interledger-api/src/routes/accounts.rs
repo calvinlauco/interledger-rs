@@ -92,7 +92,7 @@ where
                 .map_err(move |_| {
                     // TODO differentiate between server error and not found
                     error!("Error getting account id from username: {}", username);
-                    custom(ApiError::account_not_found(Some(&username)))
+                    ApiError::account_not_found(Some(&username)).into()
                 })
         })
         .boxed();
