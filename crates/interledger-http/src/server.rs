@@ -5,18 +5,19 @@ use futures::{
     Future,
 };
 use interledger_packet::Prepare;
-use interledger_service::{AddressStore, AuthToken, IncomingRequest, IncomingService};
+use interledger_service::{
+    debug_incoming_request, debug_response, AddressStore, AuthToken, IncomingRequest,
+    IncomingService,
+};
 use std::{
     convert::TryFrom,
     error::Error as StdError,
     fmt::{self, Display},
     marker::PhantomData,
     net::SocketAddr,
-    str,
 };
-use tracing::{debug, error, span, Level};
+use tracing::{debug, error};
 use tracing_futures::Instrument;
-use uuid::Uuid;
 use warp::{self, Filter};
 
 /// Max message size that is allowed to transfer from a request or a message.
@@ -89,48 +90,32 @@ where
                 // TODO don't copy ILP packet
                 let buffer = BytesMut::from(body.bytes());
                 if let Ok(prepare) = Prepare::try_from(buffer) {
-                    let span = span!(Level::DEBUG,
-                        "request",
-                        request.id = %Uuid::new_v4(),
-                        prepare.destination = %prepare.destination(),
-                        prepare.amount = prepare.amount(),
-                        from.username = %account.username(),
-                        from.id = %account.id(),
-                        from.ilp_address = %account.ilp_address(),
-                        from.asset_code = account.asset_code(),
-                        from.asset_scale = %account.asset_scale(),
-                    );
+                    let request = IncomingRequest {
+                        from: account,
+                        prepare,
+                    };
+                    let span = debug_incoming_request(&request);
+                    span.in_scope(|| {
+                        debug!("handle_request");
+                    });
                     Either::A(
                         incoming
                             .clone()
-                            .handle_request(IncomingRequest {
-                                from: account,
-                                prepare,
-                            })
+                            .handle_request(request)
                             .then(move |result| {
+                                // TODO this should go wherever it is created
+                                debug_response(&result);
                                 let bytes: BytesMut = match result {
-                                    Ok(fulfill) => {
-                                        debug!(result = "fulfill");
-                                        fulfill.into()
-                                    }
-                                    Err(reject) => {
-                                        debug!(result = "reject",
-                                            reject.code = %reject.code(),
-                                            reject.message = str::from_utf8(reject.message()).unwrap_or_default(),
-                                            reject.triggered_by = if let Some(ref address) = reject.triggered_by() {
-                                                &address
-                                            } else {
-                                                ""
-                                            });
-                                        reject.into()
-                                    }
+                                    Ok(fulfill) => fulfill.into(),
+                                    Err(reject) => reject.into(),
                                 };
                                 Ok(warp::http::Response::builder()
                                     .header("Content-Type", "application/octet-stream")
                                     .status(200)
                                     .body(bytes.freeze())
                                     .unwrap())
-                            }).instrument(span),
+                            })
+                            .instrument(span),
                     )
                 } else {
                     error!("Body was not a valid Prepare packet");

@@ -226,3 +226,75 @@ pub trait AddressStore: Clone {
     /// Get's the store's ilp address from memory
     fn get_ilp_address(&self) -> Address;
 }
+
+#[cfg(feature = "tracing")]
+use tracing::{event, span, Level, Span};
+
+#[cfg(feature = "uuid")]
+use uuid::Uuid;
+#[cfg(feature = "tracing")]
+#[cfg(feature = "uuid")]
+pub fn debug_incoming_request(request: &IncomingRequest<impl Account>) -> Span {
+    span!(Level::DEBUG,
+        "request",
+        request.id = %Uuid::new_v4(),
+        prepare.destination = %request.prepare.destination(),
+        prepare.amount = request.prepare.amount(),
+        from.username = %request.from.username(),
+        // TODO should id and ilp_address be included in the debug level?
+        // from.id = %request.from.id(),
+        // from.ilp_address = %request.from.ilp_address(),
+        from.asset_code = request.from.asset_code(),
+        from.asset_scale = %request.from.asset_scale(),
+    )
+}
+
+#[cfg(feature = "tracing")]
+#[cfg(not(feature = "uuid"))]
+pub fn debug_incoming_request(request: &IncomingRequest<impl Account>) -> Span {
+    span!(Level::DEBUG,
+        "request",
+        prepare.destination = %request.prepare.destination(),
+        prepare.amount = request.prepare.amount(),
+        from.username = %request.from.username(),
+        // from.id = %request.from.id(),
+        // from.ilp_address = %request.from.ilp_address(),
+        from.asset_code = request.from.asset_code(),
+        from.asset_scale = %request.from.asset_scale(),
+    )
+}
+
+#[cfg(feature = "tracing")]
+pub fn debug_outgoing_request(request: &OutgoingRequest<impl Account>) -> Span {
+    span!(Level::DEBUG,
+        "outgoing",
+        request.original_amount,
+        to.username = %request.from.username(),
+        // TODO should id and ilp_address be included in the debug level?
+        // to.id = %request.to.id(),
+        // to.ilp_address = %request.to.ilp_address(),
+        to.asset_code = request.from.asset_code(),
+        to.asset_scale = %request.from.asset_scale(),
+    )
+}
+
+#[cfg(feature = "tracing")]
+use std::str;
+#[cfg(feature = "tracing")]
+// TODO should this return a Span or an Event?
+// TODO make it so the target isn't interledger_service
+pub fn debug_response(response: &Result<Fulfill, Reject>) {
+    match response {
+        Ok(_fulfill) => event!(Level::DEBUG, "fulfill"),
+        Err(reject) => event!(
+        Level::DEBUG,
+        reject.code = %reject.code(),
+        reject.message = str::from_utf8(reject.message()).unwrap_or_default(),
+        reject.triggered_by = if let Some(ref address) = reject.triggered_by() {
+            &address
+        } else {
+            ""
+        },
+        "reject"),
+    }
+}
