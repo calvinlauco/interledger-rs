@@ -74,6 +74,7 @@ fn accounts_test() {
 
     let get_accounts = move |node: InterledgerNode| {
         // GET /accounts
+        println!("Testing: GET /accounts");
         let client = reqwest::r#async::Client::new();
         client
             .get(&format!(
@@ -98,6 +99,7 @@ fn accounts_test() {
 
     let post_accounts_1 = move |node: InterledgerNode| {
         // POST /accounts
+        println!("Testing: POST /accounts");
         let client = reqwest::r#async::Client::new();
         client
             .post(&format!(
@@ -190,6 +192,7 @@ fn accounts_test() {
 
     let post_accounts_2 = move |node: InterledgerNode| {
         // POST /accounts
+        println!("Testing: POST /accounts");
         let client = reqwest::r#async::Client::new();
         client
             .post(&format!(
@@ -272,6 +275,7 @@ fn accounts_test() {
 
     let put_accounts_username = move |node: InterledgerNode| {
         // PUT /accounts/:username
+        println!("Testing: PUT /accounts/:username");
         let client = reqwest::r#async::Client::new();
         client
             .put(&format!(
@@ -326,6 +330,7 @@ fn accounts_test() {
 
     let get_accounts_username = move |node: InterledgerNode| {
         // GET /accounts/:username
+        println!("Testing: GET /accounts/:username");
         let client = reqwest::r#async::Client::new();
         client
             .get(&format!(
@@ -376,6 +381,7 @@ fn accounts_test() {
 
     let get_accounts_username_balance = move |node: InterledgerNode| {
         // GET /accounts/:username/balance
+        println!("Testing: GET /accounts/:username/balance");
         let client = reqwest::r#async::Client::new();
         client
             .get(&format!(
@@ -410,6 +416,7 @@ fn accounts_test() {
 
     let put_accounts_username_settings = move |node: InterledgerNode| {
         // PUT /accounts/:username/settings
+        println!("Testing: PUT /accounts/:username/settings");
         let client = reqwest::r#async::Client::new();
         client
             .put(&format!(
@@ -452,6 +459,7 @@ fn accounts_test() {
 
     let delete_accounts_username = move |node: InterledgerNode| {
         // DELETE /accounts/:username
+        println!("Testing: DELETE /accounts/:username");
         let client = reqwest::r#async::Client::new();
         client
             .delete(&format!(
@@ -494,6 +502,7 @@ fn accounts_test() {
 
     let post_accounts_username_payments = move |node: InterledgerNode| {
         // POST /accounts/:username/payments
+        println!("Testing: POST /accounts/:username/payments");
         let amount = 100;
         let client = reqwest::r#async::Client::new();
         client
@@ -527,6 +536,7 @@ fn accounts_test() {
 
     let get_accounts_username_spsp = move |node: InterledgerNode| {
         // GET /accounts/:username/spsp
+        println!("Testing: GET /accounts/:username/spsp");
         let client = reqwest::r#async::Client::new();
         client
             .get(&format!(
@@ -577,6 +587,7 @@ fn accounts_test() {
 
     let get_well_known_pay = move |node: InterledgerNode| {
         // GET /.well-known/pay
+        println!("Testing: GET /.well-known/pay");
         let client = reqwest::r#async::Client::new();
         client
             .get(&format!(
@@ -624,6 +635,57 @@ fn accounts_test() {
             })
     };
 
+    let get_accounts_username_by_admin = move |node: InterledgerNode| {
+        // GET /accounts/:username
+        println!("Testing: GET /accounts/:username [ADMIN]");
+        let client = reqwest::r#async::Client::new();
+        client
+            .get(&format!(
+                "http://localhost:{}/accounts/{}",
+                node.http_bind_address.port(),
+                USERNAME_1
+            ))
+            .header(
+                "Authorization",
+                &format!("Bearer {}", node.admin_auth_token),
+            )
+            .send()
+            .map_err(|err| panic!(err))
+            .and_then(|mut res| {
+                let content = res.text().wait().expect("Error getting response!");
+                assert!(res.error_for_status_ref().is_ok(), "{}", &content);
+                let json: Value = serde_json::from_str(&content)
+                    .expect(&format!("Could not parse JSON! JSON: {}", &content));
+                if let Value::Object(account) = json {
+                    // Only checks if the specified fields are corret or not because
+                    // `put_accounts_username` resets fields which were not specified.
+                    assert_eq!(
+                        account
+                            .get("ilp_address")
+                            .expect("ilp_address was expected"),
+                        &Value::String(ILP_ADDRESS_1.to_owned())
+                    );
+                    assert_eq!(
+                        account.get("username").expect("username was expected"),
+                        &Value::String(USERNAME_1.to_owned())
+                    );
+                    assert_eq!(
+                        account.get("asset_code").expect("asset_code was expected"),
+                        &Value::String(ASSET_CODE.to_owned())
+                    );
+                    assert_eq!(
+                        account
+                            .get("asset_scale")
+                            .expect("asset_scale was expected"),
+                        &Value::Number(Number::from(ASSET_SCALE))
+                    );
+                } else {
+                    panic!("Invalid response JSON! {}", &content);
+                }
+                Ok(node)
+            })
+    };
+
     runtime
         .block_on(
             node_to_serve
@@ -641,7 +703,8 @@ fn accounts_test() {
                 .and_then(wait_a_sec) // Seems that we need to wait a while after the account insertions.
                 .and_then(post_accounts_username_payments)
                 .and_then(get_accounts_username_spsp)
-                .and_then(get_well_known_pay),
+                .and_then(get_well_known_pay)
+                .and_then(get_accounts_username_by_admin),
         )
         .expect("Could not spin up node and tests.");
 }
